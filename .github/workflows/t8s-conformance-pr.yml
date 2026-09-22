@@ -1,0 +1,72 @@
+name: t8s-conformance-pr
+
+on:
+  workflow_dispatch: {}
+  schedule:
+    - cron: '0 * * * *'
+
+jobs:
+  discover:
+    if: ${{ github.repository == 'teutonet/k8s-conformance' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    outputs:
+      minors: ${{ steps.list.outputs.minors }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: list
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_BOT_TOKEN }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_ENDPOINT_URL: ${{ vars.S3_ENDPOINT_URL }}
+          S3_REGION: ${{ vars.S3_REGION }}
+        run: |
+          set -x
+          minors="$(./scripts/list-t8s-conformance-candidates.sh "${{ vars.S3_BUCKET }}")"
+          echo "minors=${minors}" >> "$GITHUB_OUTPUT"
+
+  submit:
+    needs: discover
+    if: ${{ needs.discover.result == 'success' && needs.discover.outputs.minors != '[]' }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    strategy:
+      fail-fast: false
+      matrix:
+        minor: ${{ fromJson(needs.discover.outputs.minors) }}
+    steps:
+      - name: checkout this repo (for the build script only)
+        uses: actions/checkout@v4
+        with:
+          path: automation
+
+      - name: checkout upstream cncf/k8s-conformance
+        uses: actions/checkout@v4
+        with:
+          repository: cncf/k8s-conformance
+          ref: master
+          path: upstream
+
+      - name: stage submission
+        env:
+          AWS_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.S3_SECRET_ACCESS_KEY }}
+          S3_ENDPOINT_URL: ${{ vars.S3_ENDPOINT_URL }}
+          S3_REGION: ${{ vars.S3_REGION }}
+        working-directory: upstream
+        run: ../automation/scripts/build-t8s-submission.sh "${{ matrix.minor }}" "${{ vars.S3_BUCKET }}"
+
+      - name: open PR upstream
+        uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
+        with:
+          path: upstream
+          token: ${{ secrets.ACTIONS_BOT_TOKEN }}
+          push-to-fork: teutonet/k8s-conformance
+          branch: t8s-conformance-v${{ matrix.minor }}
+          commit-message: "feat: add t8s v${{ matrix.minor }} conformance results"
+          author: "bot-TeutoNet <108798345+bot-TeutoNet@users.noreply.github.com>"
+          committer: "bot-TeutoNet <108798345+bot-TeutoNet@users.noreply.github.com>"
+          title: "Conformance results for v${{ matrix.minor }}/t8s"
+          add-paths: v${{ matrix.minor }}/t8s/*
