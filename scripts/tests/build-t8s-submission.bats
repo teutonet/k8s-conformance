@@ -4,6 +4,9 @@ setup() {
   SCRIPT="${BATS_TEST_DIRNAME}/../build-t8s-submission.sh"
   WORKDIR="$(mktemp -d)"
   STUB_BIN="$(mktemp -d)"
+  # Credentialed by default so existing tests aren't affected by the
+  # --no-sign-request fallback; the dedicated test below unsets this.
+  export AWS_ACCESS_KEY_ID="dummy"
 
   mkdir -p "${WORKDIR}/v1.35/t8s"
   cat > "${WORKDIR}/v1.35/t8s/PRODUCT.yaml" <<'EOF'
@@ -63,4 +66,34 @@ teardown() {
   cd "$WORKDIR"
   PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.36" "fake-bucket"
   [ "$status" -eq 1 ]
+}
+
+@test "build-t8s-submission: adds --no-sign-request when AWS_ACCESS_KEY_ID is unset" {
+  unset AWS_ACCESS_KEY_ID
+  cat > "${STUB_BIN}/aws" <<'EOF'
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+if [[ "$1 $2" == "s3 cp" ]]; then
+  unsigned="false"
+  dest="${@: -1}"
+  for arg in "$@"; do
+    [[ "$arg" == "--no-sign-request" ]] && unsigned="true"
+  done
+  case "$dest" in
+    */e2e.log) echo "fixture e2e log" > "$dest" ;;
+    */junit_01.xml) echo "unsigned=${unsigned}" > "$dest" ;;
+  esac
+  exit 0
+fi
+echo "unexpected aws invocation: $*" >&2
+exit 1
+EOF
+  chmod +x "${STUB_BIN}/aws"
+
+  cd "$WORKDIR"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.36" "fake-bucket"
+  [ "$status" -eq 0 ]
+
+  run cat "v1.36/t8s/junit_01.xml"
+  [ "$output" = "unsigned=true" ]
 }

@@ -3,6 +3,9 @@
 setup() {
   SCRIPT="${BATS_TEST_DIRNAME}/../list-t8s-conformance-candidates.sh"
   STUB_BIN="$(mktemp -d)"
+  # Credentialed by default so existing tests aren't affected by the
+  # --no-sign-request fallback; the dedicated test below unsets this.
+  export AWS_ACCESS_KEY_ID="dummy"
 
   # Bucket has three minors: 1.35 (already certified upstream, per the
   # `gh` stub below), 1.36 (clean run, not certified, no open PR -> a
@@ -127,4 +130,30 @@ EOF
 
   PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
   [ "$status" -ne 0 ]
+}
+
+@test "list-t8s-conformance-candidates: adds --no-sign-request when AWS_ACCESS_KEY_ID is unset" {
+  unset AWS_ACCESS_KEY_ID
+  cat > "${STUB_BIN}/aws" <<'EOF'
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+unsigned="false"
+for arg in "$@"; do
+  [[ "$arg" == "--no-sign-request" ]] && unsigned="true"
+done
+if [[ "$unsigned" != "true" ]]; then
+  echo "expected --no-sign-request, got: $*" >&2
+  exit 1
+fi
+if [[ "$1 $2" == "s3 ls" ]]; then
+  exit 0
+fi
+echo "unexpected aws invocation: $*" >&2
+exit 1
+EOF
+  chmod +x "${STUB_BIN}/aws"
+
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
+  [ "$status" -eq 0 ]
+  echo "$output" | tail -n1 | jq -e '. == []'
 }

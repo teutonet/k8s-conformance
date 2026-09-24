@@ -21,7 +21,9 @@
 # matrix.
 #
 # Usage: list-t8s-conformance-candidates.sh <s3-bucket>
-# Env: S3_ENDPOINT_URL (optional), S3_REGION (optional)
+# Env: S3_ENDPOINT_URL (optional), S3_REGION (optional). If
+# AWS_ACCESS_KEY_ID is unset, requests are made unsigned (--no-sign-request),
+# for a publicly readable bucket.
 
 set -o errexit
 set -o nounset
@@ -36,6 +38,7 @@ bucket="$1"
 aws_args=()
 [[ -n "${S3_ENDPOINT_URL:-}" ]] && aws_args+=(--endpoint-url "$S3_ENDPOINT_URL")
 [[ -n "${S3_REGION:-}" ]] && aws_args+=(--region "$S3_REGION")
+[[ -z "${AWS_ACCESS_KEY_ID:-}" ]] && aws_args+=(--no-sign-request)
 
 if ! s3_listing="$(aws s3 ls "${aws_args[@]}" "s3://${bucket}/")"; then
   echo "list-t8s-conformance-candidates: failed to list s3://${bucket}/" >&2

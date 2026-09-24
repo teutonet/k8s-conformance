@@ -20,7 +20,9 @@
 # version's e2e.log/junit_01.xml from S3.
 #
 # Usage: build-t8s-submission.sh <minor-version> <s3-bucket>
-# Env: S3_ENDPOINT_URL (optional), S3_REGION (optional)
+# Env: S3_ENDPOINT_URL (optional), S3_REGION (optional). If
+# AWS_ACCESS_KEY_ID is unset, requests are made unsigned (--no-sign-request),
+# for a publicly readable bucket.
 
 set -o errexit
 set -o nounset
@@ -57,6 +59,7 @@ set_readme_kubernetes_version "$minor" "${target_dir}/README.md"
 aws_args=()
 [[ -n "${S3_ENDPOINT_URL:-}" ]] && aws_args+=(--endpoint-url "$S3_ENDPOINT_URL")
 [[ -n "${S3_REGION:-}" ]] && aws_args+=(--region "$S3_REGION")
+[[ -z "${AWS_ACCESS_KEY_ID:-}" ]] && aws_args+=(--no-sign-request)
 
 aws s3 cp "${aws_args[@]}" "s3://${bucket}/v${minor}/e2e.log" "${target_dir}/e2e.log"
 aws s3 cp "${aws_args[@]}" "s3://${bucket}/v${minor}/junit_01.xml" "${target_dir}/junit_01.xml"
