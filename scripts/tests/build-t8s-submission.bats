@@ -4,9 +4,12 @@ setup() {
   SCRIPT="${BATS_TEST_DIRNAME}/../build-t8s-submission.sh"
   WORKDIR="$(mktemp -d)"
   STUB_BIN="$(mktemp -d)"
+  export S3_ENDPOINT_URL="https://fake-endpoint.example"
+  export S3_REGION="fake-region"
   # Credentialed by default so existing tests aren't affected by the
-  # --no-sign-request fallback; the dedicated test below unsets this.
-  export AWS_ACCESS_KEY_ID="dummy"
+  # no_sign_request fallback; the dedicated test below unsets this.
+  export S3_ACCESS_KEY_ID="dummy"
+  export S3_SECRET_ACCESS_KEY="dummy"
 
   mkdir -p "${WORKDIR}/v1.35/t8s"
   cat > "${WORKDIR}/v1.35/t8s/PRODUCT.yaml" <<'EOF'
@@ -16,25 +19,26 @@ version: x.x.x
 EOF
   echo "The output here was obtained with hydrophone 0.7.0 running on a Kubernetes 1.35.2 cluster." > "${WORKDIR}/v1.35/t8s/README.md"
 
-  # Stub `aws` so no network access happens: `aws s3 cp ... <dest>` just
-  # writes a recognisable fixture body to <dest>, ignoring the source.
-  cat > "${STUB_BIN}/aws" <<'EOF'
+  # Stub `rclone` so no network access happens: `rclone copyto <src> <dest>`
+  # just writes a recognisable fixture body to <dest>, matching on a
+  # suffix of <src> (which is a "<connection-string>:bucket/key" blob).
+  cat > "${STUB_BIN}/rclone" <<'EOF'
 #!/bin/bash
 set -o errexit -o nounset -o pipefail
-if [[ "$1 $2" == "s3 cp" ]]; then
-  src="$3"
-  dest="${@: -1}"
+if [[ "$1" == "copyto" ]]; then
+  src="$2"
+  dest="$3"
   case "$src" in
     */e2e.log) echo "fixture e2e log" > "$dest" ;;
     */junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$dest" ;;
-    *) echo "unexpected aws s3 cp source: $src" >&2; exit 1 ;;
+    *) echo "unexpected rclone copyto source: $src" >&2; exit 1 ;;
   esac
   exit 0
 fi
-echo "unexpected aws invocation: $*" >&2
+echo "unexpected rclone invocation: $*" >&2
 exit 1
 EOF
-  chmod +x "${STUB_BIN}/aws"
+  chmod +x "${STUB_BIN}/rclone"
 }
 
 teardown() {
@@ -68,27 +72,27 @@ teardown() {
   [ "$status" -eq 1 ]
 }
 
-@test "build-t8s-submission: adds --no-sign-request when AWS_ACCESS_KEY_ID is unset" {
-  unset AWS_ACCESS_KEY_ID
-  cat > "${STUB_BIN}/aws" <<'EOF'
+@test "build-t8s-submission: uses no_sign_request when S3_ACCESS_KEY_ID is unset" {
+  unset S3_ACCESS_KEY_ID
+  unset S3_SECRET_ACCESS_KEY
+  cat > "${STUB_BIN}/rclone" <<'EOF'
 #!/bin/bash
 set -o errexit -o nounset -o pipefail
-if [[ "$1 $2" == "s3 cp" ]]; then
+if [[ "$1" == "copyto" ]]; then
+  src="$2"
+  dest="$3"
   unsigned="false"
-  dest="${@: -1}"
-  for arg in "$@"; do
-    [[ "$arg" == "--no-sign-request" ]] && unsigned="true"
-  done
+  [[ "$src" == *"no_sign_request=true"* ]] && unsigned="true"
   case "$dest" in
     */e2e.log) echo "fixture e2e log" > "$dest" ;;
     */junit_01.xml) echo "unsigned=${unsigned}" > "$dest" ;;
   esac
   exit 0
 fi
-echo "unexpected aws invocation: $*" >&2
+echo "unexpected rclone invocation: $*" >&2
 exit 1
 EOF
-  chmod +x "${STUB_BIN}/aws"
+  chmod +x "${STUB_BIN}/rclone"
 
   cd "$WORKDIR"
   PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.36" "fake-bucket"

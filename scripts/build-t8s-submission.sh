@@ -20,9 +20,11 @@
 # version's e2e.log/junit_01.xml from S3.
 #
 # Usage: build-t8s-submission.sh <minor-version> <s3-bucket>
-# Env: S3_ENDPOINT_URL (optional), S3_REGION (optional). If
-# AWS_ACCESS_KEY_ID is unset, requests are made unsigned (--no-sign-request),
-# for a publicly readable bucket.
+# Env: S3_ENDPOINT_URL, S3_REGION. If S3_ACCESS_KEY_ID is unset, requests
+# are made unsigned (no_sign_request), for a publicly readable bucket.
+# Uses rclone rather than the aws CLI: the aws CLI's client-side bucket
+# name validation rejects Ceph-style "tenant:bucket" names outright, with
+# no override; rclone handles them fine.
 
 set -o errexit
 set -o nounset
@@ -56,12 +58,14 @@ cp "${template_dir}/PRODUCT.yaml" "${target_dir}/PRODUCT.yaml"
 cp "${template_dir}/README.md" "${target_dir}/README.md"
 set_readme_kubernetes_version "$minor" "${target_dir}/README.md"
 
-aws_args=()
-[[ -n "${S3_ENDPOINT_URL:-}" ]] && aws_args+=(--endpoint-url "$S3_ENDPOINT_URL")
-[[ -n "${S3_REGION:-}" ]] && aws_args+=(--region "$S3_REGION")
-[[ -z "${AWS_ACCESS_KEY_ID:-}" ]] && aws_args+=(--no-sign-request)
+remote="s3,provider=Ceph,endpoint='${S3_ENDPOINT_URL:-}',region=${S3_REGION:-}"
+if [[ -n "${S3_ACCESS_KEY_ID:-}" ]]; then
+  remote="${remote},access_key_id=${S3_ACCESS_KEY_ID},secret_access_key=${S3_SECRET_ACCESS_KEY:-}"
+else
+  remote="${remote},no_sign_request=true"
+fi
 
-aws s3 cp "${aws_args[@]}" "s3://${bucket}/v${minor}/e2e.log" "${target_dir}/e2e.log"
-aws s3 cp "${aws_args[@]}" "s3://${bucket}/v${minor}/junit_01.xml" "${target_dir}/junit_01.xml"
+rclone copyto ":${remote}:${bucket}/v${minor}/e2e.log" "${target_dir}/e2e.log"
+rclone copyto ":${remote}:${bucket}/v${minor}/junit_01.xml" "${target_dir}/junit_01.xml"
 
 echo "$target_dir"

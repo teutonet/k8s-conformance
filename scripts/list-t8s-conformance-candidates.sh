@@ -21,9 +21,11 @@
 # matrix.
 #
 # Usage: list-t8s-conformance-candidates.sh <s3-bucket>
-# Env: S3_ENDPOINT_URL (optional), S3_REGION (optional). If
-# AWS_ACCESS_KEY_ID is unset, requests are made unsigned (--no-sign-request),
-# for a publicly readable bucket.
+# Env: S3_ENDPOINT_URL, S3_REGION. If S3_ACCESS_KEY_ID is unset, requests
+# are made unsigned (no_sign_request), for a publicly readable bucket.
+# Uses rclone rather than the aws CLI: the aws CLI's client-side bucket
+# name validation rejects Ceph-style "tenant:bucket" names outright, with
+# no override; rclone handles them fine.
 
 set -o errexit
 set -o nounset
@@ -35,18 +37,19 @@ source "${SCRIPT_DIR}/lib/t8s-conformance.sh"
 
 bucket="$1"
 
-aws_args=()
-[[ -n "${S3_ENDPOINT_URL:-}" ]] && aws_args+=(--endpoint-url "$S3_ENDPOINT_URL")
-[[ -n "${S3_REGION:-}" ]] && aws_args+=(--region "$S3_REGION")
-[[ -z "${AWS_ACCESS_KEY_ID:-}" ]] && aws_args+=(--no-sign-request)
+remote="s3,provider=Ceph,endpoint='${S3_ENDPOINT_URL:-}',region=${S3_REGION:-}"
+if [[ -n "${S3_ACCESS_KEY_ID:-}" ]]; then
+  remote="${remote},access_key_id=${S3_ACCESS_KEY_ID},secret_access_key=${S3_SECRET_ACCESS_KEY:-}"
+else
+  remote="${remote},no_sign_request=true"
+fi
 
-if ! s3_listing="$(aws s3 ls "${aws_args[@]}" "s3://${bucket}/")"; then
-  echo "list-t8s-conformance-candidates: failed to list s3://${bucket}/" >&2
+if ! s3_listing="$(rclone lsf --dirs-only ":${remote}:${bucket}/")"; then
+  echo "list-t8s-conformance-candidates: failed to list ${bucket}/" >&2
   exit 1
 fi
 mapfile -t minors < <(
   printf '%s\n' "$s3_listing" \
-    | awk '{print $2}' \
     | grep -E '^v[0-9]+\.[0-9]+/$' \
     | sed -E 's#^v([0-9]+\.[0-9]+)/$#\1#'
 )
@@ -55,7 +58,7 @@ candidates=()
 for minor in "${minors[@]}"; do
   tmpdir="$(mktemp -d)"
 
-  if ! aws s3 cp "${aws_args[@]}" "s3://${bucket}/v${minor}/junit_01.xml" "${tmpdir}/junit_01.xml" >/dev/null 2>&1; then
+  if ! rclone copyto ":${remote}:${bucket}/v${minor}/junit_01.xml" "${tmpdir}/junit_01.xml" >/dev/null 2>&1; then
     echo "list-t8s-conformance-candidates: no junit_01.xml for v${minor}, skipping" >&2
     rm -rf "$tmpdir"
     continue
