@@ -18,9 +18,9 @@ setup() {
 set -o errexit -o nounset -o pipefail
 if [[ "$1" == "lsf" ]]; then
   cat <<'LIST'
-v1.35/
-v1.36/
-v1.37/
+v1.35.6/
+v1.36.2/
+v1.37.0/
 LIST
   exit 0
 fi
@@ -28,9 +28,9 @@ if [[ "$1" == "copyto" ]]; then
   src="$2"
   dest="$3"
   case "$src" in
-    *v1.35/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$dest" ;;
-    *v1.36/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$dest" ;;
-    *v1.37/junit_01.xml) echo '<testsuites errors="0" failures="3"></testsuites>' > "$dest" ;;
+    *v1.35.6/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$dest" ;;
+    *v1.36.2/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$dest" ;;
+    *v1.37.0/junit_01.xml) echo '<testsuites errors="0" failures="3"></testsuites>' > "$dest" ;;
     *) echo "unexpected rclone copyto source: $src" >&2; exit 1 ;;
   esac
   exit 0
@@ -66,7 +66,7 @@ teardown() {
 @test "list-t8s-conformance-candidates: keeps only the clean, uncertified minor" {
   PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
   [ "$status" -eq 0 ]
-  echo "$output" | tail -n1 | jq -e '. == ["1.36"]'
+  echo "$output" | tail -n1 | jq -e '. == ["1.36.2"]'
 }
 
 @test "list-t8s-conformance-candidates: skips a minor with a malformed junit_01.xml instead of aborting" {
@@ -78,8 +78,8 @@ teardown() {
 set -o errexit -o nounset -o pipefail
 if [[ "$1" == "lsf" ]]; then
   cat <<'LIST'
-v1.35/
-v1.36/
+v1.35.6/
+v1.36.2/
 LIST
   exit 0
 fi
@@ -87,8 +87,8 @@ if [[ "$1" == "copyto" ]]; then
   src="$2"
   dest="$3"
   case "$src" in
-    *v1.35/junit_01.xml) echo '<malformed/>' > "$dest" ;;
-    *v1.36/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$dest" ;;
+    *v1.35.6/junit_01.xml) echo '<malformed/>' > "$dest" ;;
+    *v1.36.2/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$dest" ;;
     *) echo "unexpected rclone copyto source: $src" >&2; exit 1 ;;
   esac
   exit 0
@@ -115,7 +115,56 @@ EOF
 
   PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
   [ "$status" -eq 0 ]
-  echo "$output" | tail -n1 | jq -e '. == ["1.36"]'
+  echo "$output" | tail -n1 | jq -e '. == ["1.36.2"]'
+}
+
+@test "list-t8s-conformance-candidates: keeps only the highest patch when a minor has multiple prefixes" {
+  # Bucket has two patch prefixes for the same minor: 1.36.1 (older,
+  # must never be fetched) and 1.36.2 (newer, clean, not certified ->
+  # the only one that should be used).
+  cat > "${STUB_BIN}/rclone" <<'EOF'
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+if [[ "$1" == "lsf" ]]; then
+  cat <<'LIST'
+v1.36.1/
+v1.36.2/
+LIST
+  exit 0
+fi
+if [[ "$1" == "copyto" ]]; then
+  src="$2"
+  dest="$3"
+  case "$src" in
+    *v1.36.2/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$dest" ;;
+    *v1.36.1/junit_01.xml) echo "must not fetch the older patch" >&2; exit 1 ;;
+    *) echo "unexpected rclone copyto source: $src" >&2; exit 1 ;;
+  esac
+  exit 0
+fi
+echo "unexpected rclone invocation: $*" >&2
+exit 1
+EOF
+  chmod +x "${STUB_BIN}/rclone"
+
+  cat > "${STUB_BIN}/gh" <<'EOF'
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+if [[ "$1" == "api" && "$2" == repos/cncf/k8s-conformance/contents/v1.36/t8s/PRODUCT.yaml ]]; then
+  exit 1
+fi
+if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  echo 0
+  exit 0
+fi
+echo "unexpected gh invocation: $*" >&2
+exit 1
+EOF
+  chmod +x "${STUB_BIN}/gh"
+
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
+  [ "$status" -eq 0 ]
+  echo "$output" | tail -n1 | jq -e '. == ["1.36.2"]'
 }
 
 @test "list-t8s-conformance-candidates: exits nonzero when rclone lsf fails" {

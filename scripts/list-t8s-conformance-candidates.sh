@@ -1,23 +1,11 @@
 #!/bin/bash
 
-# Copyright 2023 CNCF.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
-# Lists Kubernetes minor versions from S3 that have a clean (zero
-# failures/errors) t8s conformance run and are not yet certified or
-# submitted upstream in cncf/k8s-conformance. Prints a JSON array of
-# minor versions (e.g. ["1.36","1.37"]) for use as a GitHub Actions
+# Lists full Kubernetes versions from S3 (bucket layout: vX.Y.Z/) that
+# have a clean (zero failures/errors) t8s conformance run, whose minor
+# (X.Y) is not yet certified or submitted upstream in
+# cncf/k8s-conformance. If a minor has multiple patch prefixes in the
+# bucket, only the highest patch is considered. Prints a JSON array of
+# full versions (e.g. ["1.36.2","1.37.0"]) for use as a GitHub Actions
 # matrix.
 #
 # Usage: list-t8s-conformance-candidates.sh <s3-bucket>
@@ -48,31 +36,44 @@ if ! s3_listing="$(rclone lsf --dirs-only ":${remote}:${bucket}/")"; then
   echo "list-t8s-conformance-candidates: failed to list ${bucket}/" >&2
   exit 1
 fi
-mapfile -t minors < <(
+mapfile -t full_versions < <(
   printf '%s\n' "$s3_listing" \
-    | grep -E '^v[0-9]+\.[0-9]+/$' \
-    | sed -E 's#^v([0-9]+\.[0-9]+)/$#\1#'
+    | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+/$' \
+    | sed -E 's#^v([0-9]+\.[0-9]+\.[0-9]+)/$#\1#'
 )
 
+# A minor can have multiple patch prefixes in the bucket (e.g. an
+# upgraded smoke-test cluster leaving old results behind); only the
+# highest patch per minor is worth considering.
+declare -A best_version_for_minor
+for full_version in "${full_versions[@]}"; do
+  minor="${full_version%.*}"
+  current_best="${best_version_for_minor[$minor]:-}"
+  if [[ -z "$current_best" ]] || [[ "$(printf '%s\n%s\n' "$current_best" "$full_version" | sort -V | tail -n1)" == "$full_version" ]]; then
+    best_version_for_minor[$minor]="$full_version"
+  fi
+done
+
 candidates=()
-for minor in "${minors[@]}"; do
+for minor in "${!best_version_for_minor[@]}"; do
+  full_version="${best_version_for_minor[$minor]}"
   tmpdir="$(mktemp -d)"
 
-  if ! rclone copyto ":${remote}:${bucket}/v${minor}/junit_01.xml" "${tmpdir}/junit_01.xml" >/dev/null 2>&1; then
-    echo "list-t8s-conformance-candidates: no junit_01.xml for v${minor}, skipping" >&2
+  if ! rclone copyto ":${remote}:${bucket}/v${full_version}/junit_01.xml" "${tmpdir}/junit_01.xml" >/dev/null 2>&1; then
+    echo "list-t8s-conformance-candidates: no junit_01.xml for v${full_version}, skipping" >&2
     rm -rf "$tmpdir"
     continue
   fi
 
   if ! is_successful="$(junit_is_successful "${tmpdir}/junit_01.xml")"; then
-    echo "list-t8s-conformance-candidates: malformed junit_01.xml for v${minor}, skipping" >&2
+    echo "list-t8s-conformance-candidates: malformed junit_01.xml for v${full_version}, skipping" >&2
     rm -rf "$tmpdir"
     continue
   fi
   rm -rf "$tmpdir"
 
   if [[ "$is_successful" != "true" ]]; then
-    echo "list-t8s-conformance-candidates: v${minor} has failures/errors, skipping" >&2
+    echo "list-t8s-conformance-candidates: v${full_version} has failures/errors, skipping" >&2
     continue
   fi
 
@@ -90,7 +91,7 @@ for minor in "${minors[@]}"; do
     continue
   fi
 
-  candidates+=("$minor")
+  candidates+=("$full_version")
 done
 
 if [[ ${#candidates[@]} -eq 0 ]]; then

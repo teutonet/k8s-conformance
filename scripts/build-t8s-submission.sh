@@ -1,25 +1,17 @@
 #!/bin/bash
 
-# Copyright 2023 CNCF.
-#
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-#
-#     http://www.apache.org/licenses/LICENSE-2.0
-#
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 # Stages a new vX.Y/t8s submission directory in the current directory
 # (expected to be a cncf/k8s-conformance checkout), using the highest
 # existing older v*/t8s directory as a template and fetching this
-# version's e2e.log/junit_01.xml from S3.
+# version's e2e.log/junit_01.xml from S3. The destination directory is
+# always minor-only (vX.Y/t8s) -- that's cncf/k8s-conformance's own fixed
+# convention, conformance is certified per minor line, not per patch --
+# but the README's Kubernetes version sentence gets the full patch
+# version, since that's what's actually available now.
 #
-# Usage: build-t8s-submission.sh <minor-version> <s3-bucket>
+# Usage: build-t8s-submission.sh <full-version> <s3-bucket>
+# <full-version> is the full X.Y.Z version (e.g. "1.36.2"); the minor
+# (e.g. "1.36") is derived from it for the destination directory.
 # Env: S3_ENDPOINT_URL, S3_REGION. If S3_ACCESS_KEY_ID is unset, requests
 # are made unsigned (no_sign_request), for a publicly readable bucket.
 # Uses rclone rather than the aws CLI: the aws CLI's client-side bucket
@@ -34,8 +26,9 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/t8s-conformance.sh disable=SC1091
 source "${SCRIPT_DIR}/lib/t8s-conformance.sh"
 
-minor="$1"
+full_version="$1"
 bucket="$2"
+minor="${full_version%.*}"
 
 existing_versions=()
 for product_yaml in v*/t8s/PRODUCT.yaml; do
@@ -56,7 +49,7 @@ target_dir="v${minor}/t8s"
 mkdir -p "$target_dir"
 cp "${template_dir}/PRODUCT.yaml" "${target_dir}/PRODUCT.yaml"
 cp "${template_dir}/README.md" "${target_dir}/README.md"
-set_readme_kubernetes_version "$minor" "${target_dir}/README.md"
+set_readme_kubernetes_version "$full_version" "${target_dir}/README.md"
 
 remote="s3,provider=Ceph,endpoint='${S3_ENDPOINT_URL:-}',region=${S3_REGION:-}"
 if [[ -n "${S3_ACCESS_KEY_ID:-}" ]]; then
@@ -65,7 +58,7 @@ else
   remote="${remote},no_sign_request=true"
 fi
 
-rclone copyto ":${remote}:${bucket}/v${minor}/e2e.log" "${target_dir}/e2e.log"
-rclone copyto ":${remote}:${bucket}/v${minor}/junit_01.xml" "${target_dir}/junit_01.xml"
+rclone copyto ":${remote}:${bucket}/v${full_version}/e2e.log" "${target_dir}/e2e.log"
+rclone copyto ":${remote}:${bucket}/v${full_version}/junit_01.xml" "${target_dir}/junit_01.xml"
 
 echo "$target_dir"

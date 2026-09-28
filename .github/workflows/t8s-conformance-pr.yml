@@ -11,7 +11,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions: {}
     outputs:
-      minors: ${{ steps.list.outputs.minors }}
+      versions: ${{ steps.list.outputs.versions }}
     steps:
       - uses: actions/checkout@v4
       - name: install rclone
@@ -25,19 +25,19 @@ jobs:
           S3_REGION: ${{ vars.S3_REGION }}
         run: |
           set -x
-          minors="$(./scripts/list-t8s-conformance-candidates.sh "${{ vars.S3_BUCKET }}")"
-          echo "minors=${minors}" >> "$GITHUB_OUTPUT"
+          versions="$(./scripts/list-t8s-conformance-candidates.sh "${{ vars.S3_BUCKET }}")"
+          echo "versions=${versions}" >> "$GITHUB_OUTPUT"
 
   submit:
     needs: discover
-    if: ${{ needs.discover.result == 'success' && needs.discover.outputs.minors != '[]' }}
+    if: ${{ needs.discover.result == 'success' && needs.discover.outputs.versions != '[]' }}
     runs-on: ubuntu-latest
     permissions:
       contents: read
     strategy:
       fail-fast: false
       matrix:
-        minor: ${{ fromJson(needs.discover.outputs.minors) }}
+        version: ${{ fromJson(needs.discover.outputs.versions) }}
     steps:
       - name: checkout this repo (for the build script only)
         uses: actions/checkout@v4
@@ -54,6 +54,10 @@ jobs:
       - name: install rclone
         run: sudo apt-get update && sudo apt-get install -y rclone
 
+      - name: compute minor
+        id: minor
+        run: echo "minor=$(echo '${{ matrix.version }}' | sed -E 's/\.[0-9]+$//')" >> "$GITHUB_OUTPUT"
+
       - name: stage submission
         env:
           S3_ACCESS_KEY_ID: ${{ secrets.S3_ACCESS_KEY_ID }}
@@ -61,7 +65,7 @@ jobs:
           S3_ENDPOINT_URL: ${{ vars.S3_ENDPOINT_URL }}
           S3_REGION: ${{ vars.S3_REGION }}
         working-directory: upstream
-        run: ../automation/scripts/build-t8s-submission.sh "${{ matrix.minor }}" "${{ vars.S3_BUCKET }}"
+        run: ../automation/scripts/build-t8s-submission.sh "${{ matrix.version }}" "${{ vars.S3_BUCKET }}"
 
       - name: open PR upstream
         uses: peter-evans/create-pull-request@5f6978faf089d4d20b00c7766989d076bb2fc7f1 # v8
@@ -69,9 +73,9 @@ jobs:
           path: upstream
           token: ${{ secrets.ACTIONS_BOT_TOKEN }}
           push-to-fork: teutonet/k8s-conformance
-          branch: t8s-conformance-v${{ matrix.minor }}
-          commit-message: "feat: add t8s v${{ matrix.minor }} conformance results"
+          branch: t8s-conformance-v${{ steps.minor.outputs.minor }}
+          commit-message: "feat: add t8s v${{ matrix.version }} conformance results"
           author: "bot-TeutoNet <108798345+bot-TeutoNet@users.noreply.github.com>"
           committer: "bot-TeutoNet <108798345+bot-TeutoNet@users.noreply.github.com>"
-          title: "Conformance results for v${{ matrix.minor }}/t8s"
-          add-paths: v${{ matrix.minor }}/t8s/*
+          title: "Conformance results for v${{ steps.minor.outputs.minor }}/t8s"
+          add-paths: v${{ steps.minor.outputs.minor }}/t8s/*

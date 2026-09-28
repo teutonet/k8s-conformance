@@ -47,7 +47,7 @@ teardown() {
 
 @test "build-t8s-submission: stages a new version dir from the template" {
   cd "$WORKDIR"
-  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.36" "fake-bucket"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.36.2" "fake-bucket"
   [ "$status" -eq 0 ]
   [ "$output" = "v1.36/t8s" ]
 
@@ -55,7 +55,7 @@ teardown() {
   [[ "$output" == *"version: x.x.x"* ]]
 
   run cat "v1.36/t8s/README.md"
-  [[ "$output" == *"Kubernetes 1.36 cluster"* ]]
+  [[ "$output" == *"Kubernetes 1.36.2 cluster"* ]]
   [[ "$output" != *"1.35"* ]]
 
   run cat "v1.36/t8s/e2e.log"
@@ -68,7 +68,7 @@ teardown() {
 @test "build-t8s-submission: fails cleanly when no template version exists" {
   rm -rf "${WORKDIR:?}/v1.35"
   cd "$WORKDIR"
-  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.36" "fake-bucket"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.36.2" "fake-bucket"
   [ "$status" -eq 1 ]
 }
 
@@ -95,7 +95,7 @@ EOF
   chmod +x "${STUB_BIN}/rclone"
 
   cd "$WORKDIR"
-  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.36" "fake-bucket"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.36.2" "fake-bucket"
   [ "$status" -eq 0 ]
 
   run cat "v1.36/t8s/junit_01.xml"
