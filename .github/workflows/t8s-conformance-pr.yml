@@ -83,3 +83,15 @@ jobs:
           committer: "bot-TeutoNet <108798345+bot-TeutoNet@users.noreply.github.com>"
           title: "${{ matrix.item.update && format('Update conformance results for v{0}/t8s', steps.minor.outputs.minor) || format('Conformance results for v{0}/t8s', steps.minor.outputs.minor) }}"
           add-paths: v${{ steps.minor.outputs.minor }}/t8s/*
+          body: |
+            ### Pre-submission checklist:
+
+            *Please check each of these after submitting your pull request:*
+
+            * [x] If this is a new entry, have you submitted a signed [participation form](https://github.com/cncf/k8s-conformance/tree/master/participation-form)? (t8s already has one on file, see #4306)
+            * [ ] Did you include the product/project logo in SVG, EPS or AI format? (no custom logo; falls back to the company logo per `PRODUCT.yaml`)
+            * [ ] Does your logo clearly state the name of the product/project and follow the other logo [guidelines](https://github.com/cncf/landscape#logos)?
+            * [ ] If your product/project is open source, did you include the `repo_url`? (t8s is a managed service, not open source)
+            * [x] Did you copy and paste the [installation and configuration instructions](https://github.com/cncf/k8s-conformance/blob/master/faq.md#can-i-provide-a-link-to-the-installation-directions) into the README.md file in addition to linking to them?
+
+            For a full list of requirements, please refer to these sections of the docs: [_Contents of the PR_](https://github.com/cncf/k8s-conformance/blob/master/instructions.md#contents-of-the-pr), and [_Requirements_](https://github.com/cncf/k8s-conformance/blob/master/instructions.md#requirements).
