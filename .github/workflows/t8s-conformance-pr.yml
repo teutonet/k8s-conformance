@@ -81,6 +81,7 @@ jobs:
           commit-message: "${{ matrix.item.update && format('feat: update t8s v{0} conformance results', matrix.item.version) || format('feat: add t8s v{0} conformance results', matrix.item.version) }}"
           author: "bot-TeutoNet <108798345+bot-TeutoNet@users.noreply.github.com>"
           committer: "bot-TeutoNet <108798345+bot-TeutoNet@users.noreply.github.com>"
+          signoff: true
           title: "${{ matrix.item.update && format('Update conformance results for v{0}/t8s', steps.minor.outputs.minor) || format('Conformance results for v{0}/t8s', steps.minor.outputs.minor) }}"
           add-paths: v${{ steps.minor.outputs.minor }}/t8s/*
           body: |
