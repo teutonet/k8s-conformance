@@ -89,6 +89,9 @@ for minor in "${!best_version_for_minor[@]}"; do
       # prose sentence once. Every future update adds the marker, so
       # this path only ever fires for entries this automation hasn't
       # touched yet.
+      # TODO: v1.35 is the only entry that ever needed this (predates
+      # the marker). Remove this fallback once its first update PR
+      # (adding the marker) is merged upstream.
       certified_version="$(grep -oE 'Kubernetes [0-9]+\.[0-9]+\.[0-9]+' "${readme_tmpdir}/README.md" | head -n1 | awk '{print $2}' || true)"
     }
     rm -rf "$readme_tmpdir"
