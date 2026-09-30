@@ -50,6 +50,10 @@ jobs:
           repository: cncf/k8s-conformance
           ref: master
           path: upstream
+          filter: blob:none
+          sparse-checkout: |
+            */t8s/
+          sparse-checkout-cone-mode: false
 
       - name: install rclone
         uses: AnimMouse/setup-rclone@26ef2133e09fd383329a1d4c1fbe6a71db1976c9 # v1.12.0
