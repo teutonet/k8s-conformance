@@ -55,3 +55,48 @@ set_readme_kubernetes_version() {
   local new="$1" file="$2"
   sed -i -E "s/Kubernetes [0-9]+\.[0-9]+(\.[0-9]+)?/Kubernetes ${new}/g" "$file"
 }
+
+# The full k8s version we last submitted lives in a hidden HTML comment
+# in the README (GitHub doesn't render HTML comments), as a small JSON
+# blob -- typed, jq-parseable, no regex-over-prose needed. Older
+# pre-automation submissions won't have this marker; callers fall back
+# to the "Kubernetes X.Y.Z" prose sentence for those, once, until this
+# marker gets added on their first update.
+readonly T8S_VERSION_MARKER_PREFIX='<!-- t8s-conformance-metadata: '
+
+# set_t8s_version_marker <full-version> <file>
+# Adds or replaces the hidden version marker comment in <file>.
+set_t8s_version_marker() {
+  local full_version="$1" file="$2"
+  local marker_json
+  marker_json="$(jq -cn --arg v "$full_version" '{kubernetes_version: $v}')"
+  local marker_line="${T8S_VERSION_MARKER_PREFIX}${marker_json} -->"
+  if grep -qF "$T8S_VERSION_MARKER_PREFIX" "$file"; then
+    local tmp
+    tmp="$(mktemp)"
+    while IFS= read -r line; do
+      if [[ "$line" == "${T8S_VERSION_MARKER_PREFIX}"* ]]; then
+        echo "$marker_line"
+      else
+        echo "$line"
+      fi
+    done < "$file" > "$tmp"
+    mv "$tmp" "$file"
+  else
+    printf '\n%s\n' "$marker_line" >> "$file"
+  fi
+}
+
+# get_t8s_version_marker <file>
+# Prints the full version from the hidden marker comment in <file>.
+# Returns 1 if no marker is present (e.g. a pre-automation submission).
+get_t8s_version_marker() {
+  local file="$1"
+  local line
+  if ! line="$(grep -F "$T8S_VERSION_MARKER_PREFIX" "$file")"; then
+    return 1
+  fi
+  local marker_json="${line#"$T8S_VERSION_MARKER_PREFIX"}"
+  marker_json="${marker_json% -->}"
+  jq -r '.kubernetes_version' <<<"$marker_json"
+}

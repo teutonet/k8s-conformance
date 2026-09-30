@@ -3,14 +3,17 @@
 [[ "${RUNNER_DEBUG:-}" == 1 ]] && set -x
 [[ -o xtrace ]] && export RUNNER_DEBUG=1
 
-# Stages a new vX.Y/t8s submission directory in the current directory
+# Stages a vX.Y/t8s submission directory in the current directory
 # (expected to be a cncf/k8s-conformance checkout), using the highest
 # existing older v*/t8s directory as a template and fetching this
 # version's e2e.log/junit_01.xml from S3. The destination directory is
 # always minor-only (vX.Y/t8s) -- that's cncf/k8s-conformance's own fixed
 # convention, conformance is certified per minor line, not per patch --
 # but the README's Kubernetes version sentence gets the full patch
-# version, since that's what's actually available now.
+# version, since that's what's actually available now. If vX.Y/t8s
+# already exists (updating an already-certified minor with a newer
+# patch), its own files are refreshed in place instead of copying a
+# template over them.
 #
 # Usage: build-t8s-submission.sh <full-version> <s3-bucket>
 # <full-version> is the full X.Y.Z version (e.g. "1.36.2"); the minor
@@ -58,9 +61,16 @@ template_dir="v${template_version}/t8s"
 target_dir="v${minor}/t8s"
 
 mkdir -p "$target_dir"
-cp "${template_dir}/PRODUCT.yaml" "${target_dir}/PRODUCT.yaml"
-cp "${template_dir}/README.md" "${target_dir}/README.md"
+if [[ "$template_version" != "$minor" ]]; then
+  # Only copy when the template is a different directory -- updating an
+  # already-certified minor in place picks itself as the fallback
+  # template (nothing else to copy from), and `cp` refuses to copy a
+  # file onto itself.
+  cp "${template_dir}/PRODUCT.yaml" "${target_dir}/PRODUCT.yaml"
+  cp "${template_dir}/README.md" "${target_dir}/README.md"
+fi
 set_readme_kubernetes_version "$full_version" "${target_dir}/README.md"
+set_t8s_version_marker "$full_version" "${target_dir}/README.md"
 
 remote="s3,provider=Ceph,endpoint='${S3_ENDPOINT_URL:-}',region=${S3_REGION:-}"
 if [[ -n "${S3_ACCESS_KEY_ID:-}" ]]; then

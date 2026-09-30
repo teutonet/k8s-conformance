@@ -4,12 +4,13 @@
 [[ -o xtrace ]] && export RUNNER_DEBUG=1
 
 # Lists full Kubernetes versions from S3 (bucket layout: vX.Y.Z/) that
-# have a clean (zero failures/errors) t8s conformance run, whose minor
-# (X.Y) is not yet certified or submitted upstream in
-# cncf/k8s-conformance. If a minor has multiple patch prefixes in the
-# bucket, only the highest patch is considered. Prints a JSON array of
-# full versions (e.g. ["1.36.2","1.37.0"]) for use as a GitHub Actions
-# matrix.
+# have a clean (zero failures/errors) t8s conformance run, and whose
+# minor (X.Y) either isn't certified upstream in cncf/k8s-conformance
+# yet, or is certified with an older patch than what's in the bucket
+# (an update). If a minor has multiple patch prefixes in the bucket,
+# only the highest patch is considered. Prints a JSON array of objects
+# (e.g. [{"version":"1.36.2","update":false},{"version":"1.35.5","update":true}])
+# for use as a GitHub Actions matrix.
 #
 # Usage: list-t8s-conformance-candidates.sh <s3-bucket>
 # Env: S3_ENDPOINT_URL, S3_REGION. If S3_ACCESS_KEY_ID is unset, requests
@@ -80,9 +81,29 @@ for minor in "${!best_version_for_minor[@]}"; do
     continue
   fi
 
-  if gh api "repos/cncf/k8s-conformance/contents/v${minor}/t8s/PRODUCT.yaml" >/dev/null 2>&1; then
-    echo "list-t8s-conformance-candidates: v${minor} already certified upstream, skipping" >&2
-    continue
+  is_update="false"
+  readme_tmpdir="$(mktemp -d)"
+  if gh api "repos/cncf/k8s-conformance/contents/v${minor}/t8s/README.md" --jq '.content' 2>/dev/null | base64 -d > "${readme_tmpdir}/README.md" 2>/dev/null; then
+    certified_version="$(get_t8s_version_marker "${readme_tmpdir}/README.md")" || {
+      # Pre-automation submission with no marker yet -- fall back to the
+      # prose sentence once. Every future update adds the marker, so
+      # this path only ever fires for entries this automation hasn't
+      # touched yet.
+      certified_version="$(grep -oE 'Kubernetes [0-9]+\.[0-9]+\.[0-9]+' "${readme_tmpdir}/README.md" | head -n1 | awk '{print $2}' || true)"
+    }
+    rm -rf "$readme_tmpdir"
+    if [[ -z "$certified_version" ]]; then
+      echo "list-t8s-conformance-candidates: v${minor} already certified upstream but couldn't determine its patch version, skipping" >&2
+      continue
+    fi
+    if [[ "$certified_version" == "$full_version" ]] || [[ "$(printf '%s\n%s\n' "$certified_version" "$full_version" | sort -V | tail -n1)" == "$certified_version" ]]; then
+      echo "list-t8s-conformance-candidates: v${minor} already certified with v${certified_version} (not older than v${full_version}), skipping" >&2
+      continue
+    fi
+    echo "list-t8s-conformance-candidates: v${minor} certified with older v${certified_version}, will submit an update to v${full_version}" >&2
+    is_update="true"
+  else
+    rm -rf "$readme_tmpdir"
   fi
 
   if ! open_prs="$(gh pr list --repo cncf/k8s-conformance --state open --search "v${minor}/t8s in:title" --json number --jq 'length')"; then
@@ -94,11 +115,11 @@ for minor in "${!best_version_for_minor[@]}"; do
     continue
   fi
 
-  candidates+=("$full_version")
+  candidates+=("{\"version\":\"${full_version}\",\"update\":${is_update}}")
 done
 
 if [[ ${#candidates[@]} -eq 0 ]]; then
   echo "[]"
 else
-  printf '%s\n' "${candidates[@]}" | jq -R . | jq -s -c .
+  printf '%s\n' "${candidates[@]}" | jq -s -c .
 fi

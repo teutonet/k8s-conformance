@@ -97,3 +97,37 @@ EOF
   run head -n1 "${FIXTURE_DIR}/README.md"
   [ "$output" = "# t8s Kubernetes Engine" ]
 }
+
+@test "set_t8s_version_marker: appends a marker to a file with none yet" {
+  printf '# t8s Kubernetes Engine\n\nTested on a Kubernetes 1.35.2 cluster.\n' > "${FIXTURE_DIR}/README.md"
+  set_t8s_version_marker "1.35.2" "${FIXTURE_DIR}/README.md"
+  run get_t8s_version_marker "${FIXTURE_DIR}/README.md"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1.35.2" ]
+  run head -n1 "${FIXTURE_DIR}/README.md"
+  [ "$output" = "# t8s Kubernetes Engine" ]
+}
+
+@test "set_t8s_version_marker: replaces an existing marker in place instead of duplicating it" {
+  printf '# t8s Kubernetes Engine\n' > "${FIXTURE_DIR}/README.md"
+  set_t8s_version_marker "1.35.2" "${FIXTURE_DIR}/README.md"
+  set_t8s_version_marker "1.35.5" "${FIXTURE_DIR}/README.md"
+  run get_t8s_version_marker "${FIXTURE_DIR}/README.md"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1.35.5" ]
+  run grep -c 't8s-conformance-metadata' "${FIXTURE_DIR}/README.md"
+  [ "$output" = "1" ]
+}
+
+@test "set_t8s_version_marker: the marker doesn't render as visible markdown" {
+  printf '# t8s Kubernetes Engine\n' > "${FIXTURE_DIR}/README.md"
+  set_t8s_version_marker "1.35.2" "${FIXTURE_DIR}/README.md"
+  run cat "${FIXTURE_DIR}/README.md"
+  [[ "$output" == *'<!-- t8s-conformance-metadata: '* ]]
+}
+
+@test "get_t8s_version_marker: fails on a pre-automation README with no marker" {
+  echo "Tested on a Kubernetes 1.35.2 cluster." > "${FIXTURE_DIR}/README.md"
+  run get_t8s_version_marker "${FIXTURE_DIR}/README.md"
+  [ "$status" -eq 1 ]
+}

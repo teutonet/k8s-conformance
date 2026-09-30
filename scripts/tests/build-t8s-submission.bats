@@ -2,6 +2,8 @@
 
 setup() {
   SCRIPT="${BATS_TEST_DIRNAME}/../build-t8s-submission.sh"
+  # shellcheck source=../lib/t8s-conformance.sh
+  source "${BATS_TEST_DIRNAME}/../lib/t8s-conformance.sh"
   WORKDIR="$(mktemp -d)"
   STUB_BIN="$(mktemp -d)"
   export S3_ENDPOINT_URL="https://fake-endpoint.example"
@@ -62,6 +64,34 @@ teardown() {
   [ "$output" = "fixture e2e log" ]
 
   run cat "v1.36/t8s/junit_01.xml"
+  [[ "$output" == *'errors="0" failures="0"'* ]]
+
+  run get_t8s_version_marker "v1.36/t8s/README.md"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1.36.2" ]
+}
+
+@test "build-t8s-submission: updates an already-certified minor in place with a newer patch" {
+  # v1.35/t8s already exists (as if certified upstream); submitting
+  # 1.35.5 for the *same* minor must refresh it in place -- not try to
+  # copy it onto itself (which `cp` would refuse) -- and still end up
+  # with the marker/README/result files correctly updated.
+  cd "$WORKDIR"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.35.5" "fake-bucket"
+  [ "$status" -eq 0 ]
+  [ "$output" = "v1.35/t8s" ]
+
+  run cat "v1.35/t8s/PRODUCT.yaml"
+  [[ "$output" == *"version: x.x.x"* ]]
+
+  run cat "v1.35/t8s/README.md"
+  [[ "$output" == *"Kubernetes 1.35.5 cluster"* ]]
+
+  run get_t8s_version_marker "v1.35/t8s/README.md"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1.35.5" ]
+
+  run cat "v1.35/t8s/junit_01.xml"
   [[ "$output" == *'errors="0" failures="0"'* ]]
 }
 
