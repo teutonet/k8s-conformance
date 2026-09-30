@@ -15,7 +15,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: install rclone
-        run: sudo apt-get update && sudo apt-get install -y rclone
+        uses: AnimMouse/setup-rclone@26ef2133e09fd383329a1d4c1fbe6a71db1976c9 # v1.12.0
       - id: list
         env:
           GH_TOKEN: ${{ secrets.ACTIONS_BOT_TOKEN }}
@@ -52,7 +52,7 @@ jobs:
           path: upstream
 
       - name: install rclone
-        run: sudo apt-get update && sudo apt-get install -y rclone
+        uses: AnimMouse/setup-rclone@26ef2133e09fd383329a1d4c1fbe6a71db1976c9 # v1.12.0
 
       - name: compute minor
         id: minor
