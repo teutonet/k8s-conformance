@@ -24,7 +24,7 @@ jobs:
           S3_ENDPOINT_URL: ${{ vars.S3_ENDPOINT_URL }}
           S3_REGION: ${{ vars.S3_REGION }}
         run: |
-          set -x
+          [[ "${RUNNER_DEBUG:-}" == 1 ]] && set -x
           versions="$(./scripts/list-t8s-conformance-candidates.sh "${{ vars.S3_BUCKET }}")"
           echo "versions=${versions}" >> "$GITHUB_OUTPUT"
 

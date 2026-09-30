@@ -1,5 +1,8 @@
 #!/bin/bash
 
+[[ "${RUNNER_DEBUG:-}" == 1 ]] && set -x
+[[ -o xtrace ]] && export RUNNER_DEBUG=1
+
 # Stages a new vX.Y/t8s submission directory in the current directory
 # (expected to be a cncf/k8s-conformance checkout), using the highest
 # existing older v*/t8s directory as a template and fetching this

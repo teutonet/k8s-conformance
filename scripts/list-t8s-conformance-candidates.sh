@@ -1,5 +1,8 @@
 #!/bin/bash
 
+[[ "${RUNNER_DEBUG:-}" == 1 ]] && set -x
+[[ -o xtrace ]] && export RUNNER_DEBUG=1
+
 # Lists full Kubernetes versions from S3 (bucket layout: vX.Y.Z/) that
 # have a clean (zero failures/errors) t8s conformance run, whose minor
 # (X.Y) is not yet certified or submitted upstream in
