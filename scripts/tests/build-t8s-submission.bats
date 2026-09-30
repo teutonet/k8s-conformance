@@ -65,6 +65,22 @@ teardown() {
   [[ "$output" == *'errors="0" failures="0"'* ]]
 }
 
+@test "build-t8s-submission: falls back to the highest existing template when target is older than all of them" {
+  # Only v1.35/t8s exists upstream; backfilling 1.33 (older than 1.35)
+  # must still work, using v1.35 as the structural template even though
+  # it's numerically above the target.
+  cd "$WORKDIR"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "1.33.11" "fake-bucket"
+  [ "$status" -eq 0 ]
+  [ "$output" = "v1.33/t8s" ]
+
+  run cat "v1.33/t8s/PRODUCT.yaml"
+  [[ "$output" == *"version: x.x.x"* ]]
+
+  run cat "v1.33/t8s/README.md"
+  [[ "$output" == *"Kubernetes 1.33.11 cluster"* ]]
+}
+
 @test "build-t8s-submission: fails cleanly when no template version exists" {
   rm -rf "${WORKDIR:?}/v1.35"
   cd "$WORKDIR"

@@ -45,7 +45,15 @@ if [[ ${#existing_versions[@]} -eq 0 ]]; then
   exit 1
 fi
 
-template_version="$(highest_version_below "$minor" "${existing_versions[@]}")"
+if ! template_version="$(highest_version_below "$minor" "${existing_versions[@]}")"; then
+  # No existing t8s submission is for an older minor than this one --
+  # e.g. backfilling an older Kubernetes release after a newer one was
+  # already certified. Any existing t8s dir is a fine structural
+  # template regardless of version direction (PRODUCT.yaml is generic,
+  # and the README's version sentence gets fully replaced), so fall
+  # back to the highest one overall.
+  template_version="$(printf '%s\n' "${existing_versions[@]}" | sort -V | tail -n1)"
+fi
 template_dir="v${template_version}/t8s"
 target_dir="v${minor}/t8s"
 
