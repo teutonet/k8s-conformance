@@ -69,6 +69,55 @@ oldest_supported_minor() {
   echo "${major}.$((minor - 2))"
 }
 
+# get_oldest_supported_minor
+# Fetches the latest stable Kubernetes version and prints the oldest
+# minor cncf/k8s-conformance's verify-conformance bot still accepts
+# (see oldest_supported_minor). Returns 1 if the fetch fails.
+get_oldest_supported_minor() {
+  local stable
+  if ! stable="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"; then
+    return 1
+  fi
+  oldest_supported_minor "$stable"
+}
+
+# minor_is_older_than <minor> <other-minor>
+# Succeeds if <minor> sorts strictly below <other-minor>.
+minor_is_older_than() {
+  [[ "$1" != "$2" ]] && [[ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | head -n1)" == "$1" ]]
+}
+
+# The bot's "required files" check looks at the PR's changed files, so an
+# update that leaves PRODUCT.yaml byte-identical fails it. `version:` is
+# the *product* version (not Kubernetes'), so we don't touch it; instead a
+# YAML comment carries the submitted Kubernetes version, which guarantees
+# PRODUCT.yaml differs on every update without changing the schema.
+readonly T8S_PRODUCT_COMMENT_PREFIX='# kubernetes_version: '
+
+# set_product_version_comment <full-version> <file>
+# Adds or replaces the Kubernetes version comment in <file>.
+set_product_version_comment() {
+  local full_version="$1" file="$2"
+  local comment_line="${T8S_PRODUCT_COMMENT_PREFIX}${full_version}"
+  if grep -qF "$T8S_PRODUCT_COMMENT_PREFIX" "$file"; then
+    local tmp
+    tmp="$(mktemp)"
+    while IFS= read -r line; do
+      if [[ "$line" == "${T8S_PRODUCT_COMMENT_PREFIX}"* ]]; then
+        echo "$comment_line"
+      else
+        echo "$line"
+      fi
+    done < "$file" > "$tmp"
+    mv "$tmp" "$file"
+  else
+    if [[ -n "$(tail -c1 "$file")" ]]; then
+      echo >> "$file"
+    fi
+    echo "$comment_line" >> "$file"
+  fi
+}
+
 # The full k8s version we last submitted lives in a hidden HTML comment
 # in the README (GitHub doesn't render HTML comments), as a small JSON
 # blob -- typed, jq-parseable, no regex-over-prose needed. Older

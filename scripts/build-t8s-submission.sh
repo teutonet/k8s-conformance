@@ -71,6 +71,7 @@ if [[ "$template_version" != "$minor" ]]; then
 fi
 set_readme_kubernetes_version "$full_version" "${target_dir}/README.md"
 set_t8s_version_marker "$full_version" "${target_dir}/README.md"
+set_product_version_comment "$full_version" "${target_dir}/PRODUCT.yaml"
 
 remote="s3,provider=Ceph,endpoint='${S3_ENDPOINT_URL:-}',region=${S3_REGION:-}"
 if [[ -n "${S3_ACCESS_KEY_ID:-}" ]]; then

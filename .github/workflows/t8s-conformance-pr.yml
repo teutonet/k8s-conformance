@@ -6,6 +6,17 @@ on:
     - cron: '0 * * * *'
 
 jobs:
+  cleanup:
+    if: ${{ github.repository == 'teutonet/k8s-conformance' }}
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - uses: actions/checkout@v4
+      - name: close PRs for minors outside the supported release window
+        env:
+          GH_TOKEN: ${{ secrets.ACTIONS_BOT_TOKEN }}
+        run: ./scripts/close-out-of-window-prs.sh
+
   discover:
     if: ${{ github.repository == 'teutonet/k8s-conformance' }}
     runs-on: ubuntu-latest

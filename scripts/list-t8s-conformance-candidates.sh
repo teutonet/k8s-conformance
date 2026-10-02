@@ -7,8 +7,11 @@
 # have a clean (zero failures/errors) t8s conformance run, and whose
 # minor (X.Y) either isn't certified upstream in cncf/k8s-conformance
 # yet, or is certified with an older patch than what's in the bucket
-# (an update). If a minor has multiple patch prefixes in the bucket,
-# only the highest patch is considered. Prints a JSON array of objects
+# (an update). A minor with an open PR of ours is only re-listed when the
+# bucket has a strictly newer patch than the PR carries, so the PR gets
+# refreshed in place. Minors outside the supported release window are
+# skipped. If a minor has multiple patch prefixes in the bucket, only
+# the highest patch is considered. Prints a JSON array of objects
 # (e.g. [{"version":"1.36.2","update":false},{"version":"1.35.5","update":true}])
 # for use as a GitHub Actions matrix.
 #
@@ -62,17 +65,16 @@ done
 # its other checks on) submissions for minors older than the latest
 # stable release minus two, so those can never pass -- don't open PRs
 # for them.
-if ! stable_version="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"; then
+if ! oldest_supported="$(get_oldest_supported_minor)"; then
   echo "list-t8s-conformance-candidates: failed to fetch the latest stable Kubernetes version" >&2
   exit 1
 fi
-oldest_supported="$(oldest_supported_minor "$stable_version")"
 
 candidates=()
 for minor in "${!best_version_for_minor[@]}"; do
   full_version="${best_version_for_minor[$minor]}"
 
-  if [[ "$minor" != "$oldest_supported" ]] && [[ "$(printf '%s\n%s\n' "$minor" "$oldest_supported" | sort -V | head -n1)" == "$minor" ]]; then
+  if minor_is_older_than "$minor" "$oldest_supported"; then
     echo "list-t8s-conformance-candidates: v${minor} is older than the oldest supported release v${oldest_supported}, skipping" >&2
     continue
   fi
@@ -125,13 +127,36 @@ for minor in "${!best_version_for_minor[@]}"; do
     rm -rf "$readme_tmpdir"
   fi
 
-  if ! open_prs="$(gh pr list --repo cncf/k8s-conformance --state open --search "v${minor}/t8s in:title" --json number --jq 'length')"; then
+  # An open PR is only worth touching if it's ours (identified by its
+  # branch name) *and* the bucket has a strictly newer patch than the one
+  # it carries -- merging can take longer than a new patch release, so
+  # the PR gets refreshed in place instead of going stale.
+  if ! open_branches="$(gh pr list --repo cncf/k8s-conformance --state open --search "v${minor}/t8s in:title" --json headRefName --jq '.[].headRefName')"; then
     echo "list-t8s-conformance-candidates: failed to check open PRs for v${minor}, skipping" >&2
     continue
   fi
-  if [[ "$open_prs" != "0" ]]; then
-    echo "list-t8s-conformance-candidates: v${minor} already has an open PR upstream, skipping" >&2
-    continue
+  if [[ -n "$open_branches" ]]; then
+    pr_branch="t8s-conformance-v${minor}"
+    if ! grep -qxF "$pr_branch" <<<"$open_branches"; then
+      echo "list-t8s-conformance-candidates: v${minor} has an open PR that isn't ours, skipping" >&2
+      continue
+    fi
+    pr_tmpdir="$(mktemp -d)"
+    if gh api "repos/teutonet/k8s-conformance/contents/v${minor}/t8s/README.md?ref=${pr_branch}" --jq '.content' 2>/dev/null | base64 -d > "${pr_tmpdir}/README.md" 2>/dev/null; then
+      pr_version="$(get_t8s_version_marker "${pr_tmpdir}/README.md" || true)"
+    else
+      pr_version=""
+    fi
+    rm -rf "$pr_tmpdir"
+    if [[ -z "$pr_version" ]]; then
+      echo "list-t8s-conformance-candidates: v${minor} has an open PR but its version couldn't be read, skipping" >&2
+      continue
+    fi
+    if [[ "$pr_version" == "$full_version" ]] || [[ "$(printf '%s\n%s\n' "$pr_version" "$full_version" | sort -V | tail -n1)" == "$pr_version" ]]; then
+      echo "list-t8s-conformance-candidates: v${minor} open PR already carries v${pr_version} (not older than v${full_version}), skipping" >&2
+      continue
+    fi
+    echo "list-t8s-conformance-candidates: v${minor} open PR carries older v${pr_version}, will refresh it to v${full_version}" >&2
   fi
 
   candidates+=("{\"version\":\"${full_version}\",\"update\":${is_update}}")

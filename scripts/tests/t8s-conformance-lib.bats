@@ -143,3 +143,58 @@ EOF
   [ "$status" -eq 0 ]
   [ "$output" = "1.28" ]
 }
+
+@test "minor_is_older_than: true only for a strictly older minor" {
+  run minor_is_older_than "1.33" "1.35"
+  [ "$status" -eq 0 ]
+  run minor_is_older_than "1.35" "1.35"
+  [ "$status" -ne 0 ]
+  run minor_is_older_than "1.36" "1.35"
+  [ "$status" -ne 0 ]
+  run minor_is_older_than "1.9" "1.10"
+  [ "$status" -eq 0 ]
+}
+
+@test "get_oldest_supported_minor: derives the window from the fetched stable version" {
+  stub_dir="$(mktemp -d)"
+  printf '#!/bin/bash\necho v1.37.1\n' > "${stub_dir}/curl"
+  chmod +x "${stub_dir}/curl"
+  PATH="${stub_dir}:${PATH}" run get_oldest_supported_minor
+  rm -rf "$stub_dir"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1.35" ]
+}
+
+@test "get_oldest_supported_minor: fails when the fetch fails" {
+  stub_dir="$(mktemp -d)"
+  printf '#!/bin/bash\nexit 22\n' > "${stub_dir}/curl"
+  chmod +x "${stub_dir}/curl"
+  PATH="${stub_dir}:${PATH}" run get_oldest_supported_minor
+  rm -rf "$stub_dir"
+  [ "$status" -ne 0 ]
+}
+
+@test "set_product_version_comment: appends the comment, keeping version: untouched" {
+  printf 'vendor: teuto.net\nversion: x.x.x\n' > "${FIXTURE_DIR}/PRODUCT.yaml"
+  set_product_version_comment "1.35.5" "${FIXTURE_DIR}/PRODUCT.yaml"
+  run cat "${FIXTURE_DIR}/PRODUCT.yaml"
+  [[ "$output" == *'version: x.x.x'* ]]
+  [[ "$output" == *'# kubernetes_version: 1.35.5' ]]
+}
+
+@test "set_product_version_comment: replaces an existing comment instead of duplicating it" {
+  printf 'vendor: teuto.net\n' > "${FIXTURE_DIR}/PRODUCT.yaml"
+  set_product_version_comment "1.35.2" "${FIXTURE_DIR}/PRODUCT.yaml"
+  set_product_version_comment "1.35.5" "${FIXTURE_DIR}/PRODUCT.yaml"
+  run grep -c 'kubernetes_version' "${FIXTURE_DIR}/PRODUCT.yaml"
+  [ "$output" = "1" ]
+  run grep 'kubernetes_version' "${FIXTURE_DIR}/PRODUCT.yaml"
+  [ "$output" = "# kubernetes_version: 1.35.5" ]
+}
+
+@test "set_product_version_comment: handles a file with no trailing newline" {
+  printf 'vendor: teuto.net' > "${FIXTURE_DIR}/PRODUCT.yaml"
+  set_product_version_comment "1.35.5" "${FIXTURE_DIR}/PRODUCT.yaml"
+  run head -n1 "${FIXTURE_DIR}/PRODUCT.yaml"
+  [ "$output" = "vendor: teuto.net" ]
+}

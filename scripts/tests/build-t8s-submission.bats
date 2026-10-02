@@ -69,6 +69,9 @@ teardown() {
   run get_t8s_version_marker "v1.36/t8s/README.md"
   [ "$status" -eq 0 ]
   [ "$output" = "1.36.2" ]
+
+  run cat "v1.36/t8s/PRODUCT.yaml"
+  [[ "$output" == *"# kubernetes_version: 1.36.2" ]]
 }
 
 @test "build-t8s-submission: updates an already-certified minor in place with a newer patch" {
@@ -90,6 +93,11 @@ teardown() {
   run get_t8s_version_marker "v1.35/t8s/README.md"
   [ "$status" -eq 0 ]
   [ "$output" = "1.35.5" ]
+
+  # PRODUCT.yaml must differ from the original, or the bot sees it as
+  # missing from the PR.
+  run cat "v1.35/t8s/PRODUCT.yaml"
+  [[ "$output" == *"# kubernetes_version: 1.35.5" ]]
 
   run cat "v1.35/t8s/junit_01.xml"
   [[ "$output" == *'errors="0" failures="0"'* ]]

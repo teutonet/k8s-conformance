@@ -56,7 +56,6 @@ if [[ "$1" == "api" && "$2" == repos/cncf/k8s-conformance/contents/v1.36/t8s/REA
   exit 1
 fi
 if [[ "$1" == "pr" && "$2" == "list" ]]; then
-  echo 0
   exit 0
 fi
 echo "unexpected gh invocation: $*" >&2
@@ -179,7 +178,6 @@ if [[ "$1" == "api" && "$2" == "repos/cncf/k8s-conformance/contents/v1.35/t8s/RE
   exit 0
 fi
 if [[ "$1" == "pr" && "$2" == "list" ]]; then
-  echo 0
   exit 0
 fi
 echo "unexpected gh invocation: $*" >&2
@@ -259,7 +257,6 @@ if [[ "$1" == "api" && "$2" == "repos/cncf/k8s-conformance/contents/v1.35/t8s/RE
   exit 0
 fi
 if [[ "$1" == "pr" && "$2" == "list" ]]; then
-  echo 0
   exit 0
 fi
 echo "unexpected gh invocation: $*" >&2
@@ -393,4 +390,79 @@ EOS
 
   PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
   [ "$status" -ne 0 ]
+}
+
+# Shared stubs for the open-PR scenarios: bucket has only v1.37.1 (clean,
+# never certified upstream), and `gh` reports an open PR on the given
+# branch whose README carries the given marker version.
+setup_open_pr_scenario() {
+  local pr_branch="$1" pr_marker_version="$2"
+  cat > "${STUB_BIN}/rclone" <<'EOS'
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+if [[ "$1" == "lsf" ]]; then
+  echo 'v1.37.1/'
+  exit 0
+fi
+if [[ "$1" == "copyto" ]]; then
+  case "$2" in
+    *v1.37.1/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$3" ;;
+    *) echo "unexpected rclone copyto source: $2" >&2; exit 1 ;;
+  esac
+  exit 0
+fi
+echo "unexpected rclone invocation: $*" >&2
+exit 1
+EOS
+  chmod +x "${STUB_BIN}/rclone"
+
+  cat > "${STUB_BIN}/gh" <<EOS
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+if [[ "\$1" == "api" && "\$2" == "repos/cncf/k8s-conformance/contents/v1.37/t8s/README.md" ]]; then
+  echo "not found" >&2
+  exit 1
+fi
+if [[ "\$1" == "api" && "\$2" == "repos/teutonet/k8s-conformance/contents/v1.37/t8s/README.md?ref=t8s-conformance-v1.37" ]]; then
+  echo -n '<!-- t8s-conformance-metadata: {"kubernetes_version":"${pr_marker_version}"} -->' | base64 -w0
+  exit 0
+fi
+if [[ "\$1" == "pr" && "\$2" == "list" ]]; then
+  echo "${pr_branch}"
+  exit 0
+fi
+echo "unexpected gh invocation: \$*" >&2
+exit 1
+EOS
+  chmod +x "${STUB_BIN}/gh"
+}
+
+@test "list-t8s-conformance-candidates: refreshes our open PR when the bucket has a newer patch" {
+  setup_open_pr_scenario "t8s-conformance-v1.37" "1.37.0"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
+  [ "$status" -eq 0 ]
+  echo "$output" | tail -n1 | jq -e '. == [{"version":"1.37.1","update":false}]'
+}
+
+@test "list-t8s-conformance-candidates: leaves our open PR alone when it already carries the same patch" {
+  setup_open_pr_scenario "t8s-conformance-v1.37" "1.37.1"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
+  [ "$status" -eq 0 ]
+  echo "$output" | tail -n1 | jq -e '. == []'
+}
+
+@test "list-t8s-conformance-candidates: skips a minor whose open PR isn't ours" {
+  setup_open_pr_scenario "someone-elses-branch" "1.37.0"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
+  [ "$status" -eq 0 ]
+  echo "$output" | tail -n1 | jq -e '. == []'
+}
+
+@test "list-t8s-conformance-candidates: skips our open PR when its version can't be read" {
+  setup_open_pr_scenario "t8s-conformance-v1.37" "1.37.0"
+  # Same scenario, but the PR branch's README has no marker at all.
+  sed -i 's|echo -n .<!-- t8s-conformance-metadata.*|echo -n "no marker here" \| base64 -w0|' "${STUB_BIN}/gh"
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
+  [ "$status" -eq 0 ]
+  echo "$output" | tail -n1 | jq -e '. == []'
 }
