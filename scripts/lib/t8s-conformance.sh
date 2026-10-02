@@ -56,6 +56,19 @@ set_readme_kubernetes_version() {
   sed -i -E "s/Kubernetes [0-9]+\.[0-9]+(\.[0-9]+)?/Kubernetes ${new}/g" "$file"
 }
 
+# oldest_supported_minor <stable-version>
+# Given the latest stable Kubernetes version (e.g. "v1.37.1", as in
+# https://dl.k8s.io/release/stable.txt), prints the oldest minor
+# (e.g. "1.35") cncf/k8s-conformance's verify-conformance bot still
+# accepts submissions for: the latest minor and the two before it.
+oldest_supported_minor() {
+  local stable="${1#v}"
+  local major="${stable%%.*}"
+  local rest="${stable#*.}"
+  local minor="${rest%%.*}"
+  echo "${major}.$((minor - 2))"
+}
+
 # The full k8s version we last submitted lives in a hidden HTML comment
 # in the README (GitHub doesn't render HTML comments), as a small JSON
 # blob -- typed, jq-parseable, no regex-over-prose needed. Older

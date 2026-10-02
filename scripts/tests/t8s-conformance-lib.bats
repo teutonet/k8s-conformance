@@ -131,3 +131,15 @@ EOF
   run get_t8s_version_marker "${FIXTURE_DIR}/README.md"
   [ "$status" -eq 1 ]
 }
+
+@test "oldest_supported_minor: latest stable minus two minors" {
+  run oldest_supported_minor "v1.37.1"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1.35" ]
+}
+
+@test "oldest_supported_minor: works without the leading v" {
+  run oldest_supported_minor "1.30.4"
+  [ "$status" -eq 0 ]
+  [ "$output" = "1.28" ]
+}

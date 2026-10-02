@@ -63,6 +63,13 @@ echo "unexpected gh invocation: $*" >&2
 exit 1
 EOF
   chmod +x "${STUB_BIN}/gh"
+
+  # Latest stable is v1.37.1 -> supported window is 1.35..1.37.
+  cat > "${STUB_BIN}/curl" <<'EOF'
+#!/bin/bash
+echo "v1.37.1"
+EOF
+  chmod +x "${STUB_BIN}/curl"
 }
 
 teardown() {
@@ -343,4 +350,47 @@ EOF
   PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
   [ "$status" -eq 0 ]
   echo "$output" | tail -n1 | jq -e '. == []'
+}
+
+@test "list-t8s-conformance-candidates: skips a minor older than the oldest supported release" {
+  # Latest stable is v1.37.1 (curl stub), so 1.35 is the oldest the
+  # verify-conformance bot accepts; 1.33 must never be fetched or even
+  # looked up upstream, 1.36 stays a normal candidate.
+  cat > "${STUB_BIN}/rclone" <<'EOS'
+#!/bin/bash
+set -o errexit -o nounset -o pipefail
+if [[ "$1" == "lsf" ]]; then
+  cat <<'LIST'
+v1.33.11/
+v1.36.2/
+LIST
+  exit 0
+fi
+if [[ "$1" == "copyto" ]]; then
+  case "$2" in
+    *v1.36.2/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$3" ;;
+    *v1.33.11/junit_01.xml) echo "must not fetch an out-of-window minor" >&2; exit 1 ;;
+    *) echo "unexpected rclone copyto source: $2" >&2; exit 1 ;;
+  esac
+  exit 0
+fi
+echo "unexpected rclone invocation: $*" >&2
+exit 1
+EOS
+  chmod +x "${STUB_BIN}/rclone"
+
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
+  [ "$status" -eq 0 ]
+  echo "$output" | tail -n1 | jq -e '. == [{"version":"1.36.2","update":false}]'
+}
+
+@test "list-t8s-conformance-candidates: exits nonzero when the latest stable version can't be fetched" {
+  cat > "${STUB_BIN}/curl" <<'EOS'
+#!/bin/bash
+exit 22
+EOS
+  chmod +x "${STUB_BIN}/curl"
+
+  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
+  [ "$status" -ne 0 ]
 }

@@ -58,9 +58,25 @@ for full_version in "${full_versions[@]}"; do
   fi
 done
 
+# cncf/k8s-conformance's verify-conformance bot rejects (and never runs
+# its other checks on) submissions for minors older than the latest
+# stable release minus two, so those can never pass -- don't open PRs
+# for them.
+if ! stable_version="$(curl -fsSL https://dl.k8s.io/release/stable.txt)"; then
+  echo "list-t8s-conformance-candidates: failed to fetch the latest stable Kubernetes version" >&2
+  exit 1
+fi
+oldest_supported="$(oldest_supported_minor "$stable_version")"
+
 candidates=()
 for minor in "${!best_version_for_minor[@]}"; do
   full_version="${best_version_for_minor[$minor]}"
+
+  if [[ "$minor" != "$oldest_supported" ]] && [[ "$(printf '%s\n%s\n' "$minor" "$oldest_supported" | sort -V | head -n1)" == "$minor" ]]; then
+    echo "list-t8s-conformance-candidates: v${minor} is older than the oldest supported release v${oldest_supported}, skipping" >&2
+    continue
+  fi
+
   tmpdir="$(mktemp -d)"
 
   if ! rclone copyto ":${remote}:${bucket}/v${full_version}/junit_01.xml" "${tmpdir}/junit_01.xml" >/dev/null 2>&1; then
