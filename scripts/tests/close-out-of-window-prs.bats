@@ -19,6 +19,8 @@ EOF
 #!/bin/bash
 set -o errexit -o nounset -o pipefail
 if [[ "$1" == "pr" && "$2" == "list" ]]; then
+  # The PR author's login is teutonet-bot; a wrong --author matches nothing.
+  [[ " $* " == *" --author teutonet-bot "* ]] || exit 0
   cat <<'LIST'
 4461 t8s-conformance-v1.33
 4460 t8s-conformance-v1.36

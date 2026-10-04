@@ -19,7 +19,7 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=lib/t8s-conformance.sh disable=SC1091
 source "${SCRIPT_DIR}/lib/t8s-conformance.sh"
 
-readonly BOT_USER="bot-TeutoNet"
+readonly BOT_USER="teutonet-bot"
 readonly BRANCH_PREFIX="t8s-conformance-v"
 
 if ! oldest_supported="$(get_oldest_supported_minor)"; then
