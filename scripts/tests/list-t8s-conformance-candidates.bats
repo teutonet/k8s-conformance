@@ -228,48 +228,7 @@ EOF
   echo "$output" | tail -n1 | jq -e '. == []'
 }
 
-@test "list-t8s-conformance-candidates: falls back to prose parsing for a pre-automation README with no marker" {
-  cat > "${STUB_BIN}/rclone" <<'EOF'
-#!/bin/bash
-set -o errexit -o nounset -o pipefail
-if [[ "$1" == "lsf" ]]; then
-  echo 'v1.35.5/'
-  exit 0
-fi
-if [[ "$1" == "copyto" ]]; then
-  case "$2" in
-    *v1.35.5/junit_01.xml) echo '<testsuites errors="0" failures="0"></testsuites>' > "$3" ;;
-    *) echo "unexpected rclone copyto source: $2" >&2; exit 1 ;;
-  esac
-  exit 0
-fi
-echo "unexpected rclone invocation: $*" >&2
-exit 1
-EOF
-  chmod +x "${STUB_BIN}/rclone"
-
-  cat > "${STUB_BIN}/gh" <<'EOF'
-#!/bin/bash
-set -o errexit -o nounset -o pipefail
-if [[ "$1" == "api" && "$2" == "repos/cncf/k8s-conformance/contents/v1.35/t8s/README.md" ]]; then
-  content="$(echo -n 'Tested on a Kubernetes 1.35.2 cluster.' | base64 -w0)"
-  echo "$content"
-  exit 0
-fi
-if [[ "$1" == "pr" && "$2" == "list" ]]; then
-  exit 0
-fi
-echo "unexpected gh invocation: $*" >&2
-exit 1
-EOF
-  chmod +x "${STUB_BIN}/gh"
-
-  PATH="${STUB_BIN}:${PATH}" run "$SCRIPT" "fake-bucket"
-  [ "$status" -eq 0 ]
-  echo "$output" | tail -n1 | jq -e '. == [{"version":"1.35.5","update":true}]'
-}
-
-@test "list-t8s-conformance-candidates: skips a certified minor when neither marker nor prose can be parsed" {
+@test "list-t8s-conformance-candidates: skips a certified minor whose README has no version marker" {
   cat > "${STUB_BIN}/rclone" <<'EOF'
 #!/bin/bash
 set -o errexit -o nounset -o pipefail

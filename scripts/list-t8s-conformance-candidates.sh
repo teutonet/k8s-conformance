@@ -102,16 +102,7 @@ for minor in "${!best_version_for_minor[@]}"; do
   is_update="false"
   readme_tmpdir="$(mktemp -d)"
   if gh api "repos/cncf/k8s-conformance/contents/v${minor}/t8s/README.md" --jq '.content' 2>/dev/null | base64 -d > "${readme_tmpdir}/README.md" 2>/dev/null; then
-    certified_version="$(get_t8s_version_marker "${readme_tmpdir}/README.md")" || {
-      # Pre-automation submission with no marker yet -- fall back to the
-      # prose sentence once. Every future update adds the marker, so
-      # this path only ever fires for entries this automation hasn't
-      # touched yet.
-      # TODO: v1.35 is the only entry that ever needed this (predates
-      # the marker). Remove this fallback once its first update PR
-      # (adding the marker) is merged upstream.
-      certified_version="$(grep -oE 'Kubernetes [0-9]+\.[0-9]+\.[0-9]+' "${readme_tmpdir}/README.md" | head -n1 | awk '{print $2}' || true)"
-    }
+    certified_version="$(get_t8s_version_marker "${readme_tmpdir}/README.md" || true)"
     rm -rf "$readme_tmpdir"
     if [[ -z "$certified_version" ]]; then
       echo "list-t8s-conformance-candidates: v${minor} already certified upstream but couldn't determine its patch version, skipping" >&2

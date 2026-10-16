@@ -120,10 +120,7 @@ set_product_version_comment() {
 
 # The full k8s version we last submitted lives in a hidden HTML comment
 # in the README (GitHub doesn't render HTML comments), as a small JSON
-# blob -- typed, jq-parseable, no regex-over-prose needed. Older
-# pre-automation submissions won't have this marker; callers fall back
-# to the "Kubernetes X.Y.Z" prose sentence for those, once, until this
-# marker gets added on their first update.
+# blob -- typed, jq-parseable, no regex-over-prose needed.
 readonly T8S_VERSION_MARKER_PREFIX='<!-- t8s-conformance-metadata: '
 
 # set_t8s_version_marker <full-version> <file>
